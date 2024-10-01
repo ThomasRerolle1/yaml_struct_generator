@@ -98,7 +98,7 @@
 
 use proc_macro::TokenStream;
 use proc_macro2::Ident;
-use quote::quote;
+use quote::{format_ident, quote};
 use serde_yaml::Value;
 use std::fs;
 use syn::{parse_macro_input, LitStr}; // Ajoutez cet import
@@ -121,7 +121,7 @@ pub fn yaml_struct(input: TokenStream) -> TokenStream {
     match yaml_data {
         Value::Mapping(mapping) => {
             for (k, v) in mapping {
-                let key = k.as_str().unwrap();
+                let key = format_ident!("{}", k.as_str().unwrap());
                 let value_type = match v {
                     Value::String(_) => quote! { String },
                     Value::Number(_) => quote! { i32 },
