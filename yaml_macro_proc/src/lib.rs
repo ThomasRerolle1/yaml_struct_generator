@@ -115,9 +115,33 @@ pub fn yaml_struct(input: TokenStream) -> TokenStream {
 
     // Définir le nom de la structure
     let struct_name = Ident::new("GeneratedStruct", proc_macro2::Span::call_site()); // Utilisez proc_macro2::Span ici
-    let mut fields = Vec::new();
 
+    let (fields, nested_structs) = generate_struct("GeneratedStruct", &yaml_data);
     // Générer les champs de la structure à partir du YAML
+    // Générer le code pour la structure
+    let main_struct = quote! {
+        #[derive(Debug, serde::Deserialize)]
+        pub struct #struct_name {
+            #(#fields)*
+        }
+
+    };
+
+    let expanded = quote! {
+        #main_struct
+        #(#nested_structs)*
+    };
+
+    TokenStream::from(expanded)
+}
+
+fn generate_struct(
+    parent_name: &str,
+    yaml_data: &Value,
+) -> (Vec<proc_macro2::TokenStream>, Vec<proc_macro2::TokenStream>) {
+    let mut fields = Vec::new();
+    let mut nested_structs = Vec::new();
+
     match yaml_data {
         Value::Mapping(mapping) => {
             for (k, v) in mapping {
@@ -126,6 +150,26 @@ pub fn yaml_struct(input: TokenStream) -> TokenStream {
                     Value::String(_) => quote! { String },
                     Value::Number(_) => quote! { i32 },
                     Value::Bool(_) => quote! { bool },
+                    Value::Mapping(_) => {
+                        let nested_struct_name =
+                            format_ident!("{}{}", parent_name, k.as_str().unwrap());
+
+                        let (nested_struct, struct_value) =
+                            generate_struct(&nested_struct_name.to_string(), v);
+
+                        nested_structs.push(quote! {
+                            #[derive(Debug, serde::Deserialize)]
+                            pub struct #nested_struct_name {
+                                #(#nested_struct)*
+                            }
+                        });
+
+                        fields.push(quote! {
+                            pub: #key: #nested_struct_name
+                        });
+
+                        quote! { #nested_struct_name}
+                    }
                     _ => quote! { serde_yaml::Value }, // Pour les types non pris en charge
                 };
 
@@ -136,14 +180,5 @@ pub fn yaml_struct(input: TokenStream) -> TokenStream {
         }
         _ => panic!("YAML file must contain a mapping"),
     };
-
-    // Générer le code pour la structure
-    let expanded = quote! {
-        #[derive(Debug, serde::Deserialize)]
-        pub struct #struct_name {
-            #(#fields)*
-        }
-    };
-
-    TokenStream::from(expanded)
+    (fields, nested_structs)
 }
